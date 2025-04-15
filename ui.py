@@ -314,7 +314,8 @@ class UserFrame(ttk.Frame):
         
         # Create a frame inside the canvas for car items
         self.car_items_frame = ttk.Frame(self.list_canvas, style="TFrame")
-        self.canvas_window = self.list_canvas.create_window((0, 0), window=self.car_items_frame, anchor="nw")
+        # Width=1 forces the frame to match the canvas width
+        self.canvas_window = self.list_canvas.create_window((0, 0), window=self.car_items_frame, anchor="nw", width=self.list_canvas.winfo_width())
         
         # Connect scrollbar to canvas
         self.list_canvas.configure(yscrollcommand=self.scrollbar.set)
@@ -327,6 +328,15 @@ class UserFrame(ttk.Frame):
         self.list_canvas.bind("<Button-4>", self.on_mousewheel)  # Linux scroll up
         self.list_canvas.bind("<Button-5>", self.on_mousewheel)  # Linux scroll down
         
+        # Bind canvas resize to update car items width
+        self.list_canvas.bind("<Configure>", lambda e: self.on_canvas_configure(e))
+        
+        # Установим начальную ширину
+        self.list_canvas.update_idletasks()
+        width = self.list_canvas.winfo_width()
+        if width > 1:  # Если ширина не нулевая
+            self.list_canvas.itemconfig(self.canvas_window, width=width)
+        
     def on_frame_configure(self, event=None):
         """Reset the scroll region to encompass the inner frame"""
         self.list_canvas.configure(scrollregion=self.list_canvas.bbox("all"))
@@ -338,6 +348,12 @@ class UserFrame(ttk.Frame):
         elif event.num == 5 or event.delta < 0:  # Scroll down
             self.list_canvas.yview_scroll(1, "units")
     
+    def on_canvas_configure(self, event):
+        """Update car items frame width when canvas is resized"""
+        # Обновляем ширину внутреннего фрейма при изменении размера канваса
+        width = event.width - 4  # вычитаем отступ
+        self.list_canvas.itemconfig(self.canvas_window, width=width)
+    
     def setup_detail_frame(self):
         """Setup the car detail frame with placeholders"""
         # Детальный фрейм будет создаваться динамически для каждого автомобиля
@@ -345,7 +361,11 @@ class UserFrame(ttk.Frame):
     
     def update_frame(self):
         """Update the car list when the frame is shown"""
-        # Очищаем список автомобилей и создаем заново контейнер
+        # Очищаем все существующие виджеты в списке
+        for widget in self.list_frame.winfo_children():
+            widget.destroy()
+            
+        # Создаем список заново
         self.setup_list_frame()
         
         # Get cars from database
@@ -365,7 +385,7 @@ class UserFrame(ttk.Frame):
         for i, car in enumerate(cars):
             # Создаем карточку автомобиля
             car_frame = ttk.Frame(self.car_items_frame, style="Card.TFrame")
-            car_frame.pack(fill="x", padx=20, pady=10, ipadx=10, ipady=10)
+            car_frame.pack(fill="x", padx=5, pady=10, ipadx=20, ipady=15)
             
             # Сохраняем id автомобиля как атрибут
             setattr(car_frame, 'car_id', car['id'])
