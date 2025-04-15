@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}Каталог автомобилей{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Доступные автомобили</h1>
+
+{% if cars %}
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for car in cars %}
+    <div class="col">
+        <div class="card car-card h-100">
+            {% if car.image %}
+            <div class="car-image" style="background-image: url('{{ url_for('car_image', car_id=car.id) }}')"></div>
+            {% else %}
+            <div class="car-image-placeholder">
+                <img src="{{ url_for('static', filename='img/placeholder.svg') }}" alt="Нет изображения">
+            </div>
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ car.name }}</h5>
+                <p class="card-text">
+                    <strong>Цена:</strong> {{ "%.2f"|format(car.price) }} ₽
+                </p>
+                <a href="{{ url_for('car_detail', car_id=car.id) }}" class="btn btn-primary">Подробнее</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    В настоящее время в каталоге нет автомобилей. Пожалуйста, проверьте позже.
+</div>
+{% endif %}
+{% endblock %}
