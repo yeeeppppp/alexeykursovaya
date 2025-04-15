@@ -1,17 +1,37 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import os
 import base64
-import sqlite3
 from io import BytesIO
 from PIL import Image
-from database import setup_database, get_cars, get_car, add_car, delete_car
-import auth
+from models import db, Car, Admin
+import random
 
 app = Flask(__name__)
 app.secret_key = 'carSalesAppSecretKey123'
 
-# Ensure database is set up
-setup_database()
+# Database configuration
+database_url = os.environ.get('DATABASE_URL')
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_recycle': 300,
+    'pool_pre_ping': True,
+}
+
+# Initialize database
+db.init_app(app)
+
+# Create tables
+with app.app_context():
+    db.create_all()
+    
+    # Insert test admin if none exists
+    if not Admin.query.filter_by(username='admin').first():
+        test_admin = Admin(username='admin', password='admin123')
+        db.session.add(test_admin)
+        db.session.commit()
 
 @app.route('/')
 def index():
@@ -21,24 +41,26 @@ def index():
 @app.route('/user')
 def user_view():
     """Display the user view with car listings"""
-    cars = get_cars()
-    return render_template('user.html', cars=cars)
+    cars = Car.query.all()
+    return render_template('user.html', cars=[car.to_dict() for car in cars])
 
 @app.route('/car/<int:car_id>')
 def car_detail(car_id):
     """Display details for a specific car"""
-    car = get_car(car_id)
+    car = Car.query.get(car_id)
     if not car:
         flash('Автомобиль не найден', 'error')
         return redirect(url_for('user_view'))
     
-    # Convert image data to base64 for display in HTML
-    image_data = car['image']
-    if image_data:
-        encoded_image = base64.b64encode(image_data).decode('utf-8')
-        car['image_data'] = encoded_image
+    # Convert to dictionary for template use
+    car_dict = car.to_dict()
     
-    return render_template('car_detail.html', car=car)
+    # Convert image data to base64 for display in HTML
+    if car_dict['image']:
+        encoded_image = base64.b64encode(car_dict['image']).decode('utf-8')
+        car_dict['image_data'] = encoded_image
+    
+    return render_template('car_detail.html', car=car_dict)
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -48,7 +70,8 @@ def admin_login():
         username = request.form['username']
         password = request.form['password']
         
-        if auth.login(username, password):
+        admin = Admin.query.filter_by(username=username, password=password).first()
+        if admin:
             session['admin_logged_in'] = True
             flash('Авторизация успешна!', 'success')
             return redirect(url_for('admin_dashboard'))
@@ -71,8 +94,8 @@ def admin_dashboard():
         flash('Пожалуйста, войдите, чтобы получить доступ к панели администратора', 'error')
         return redirect(url_for('admin_login'))
     
-    cars = get_cars()
-    return render_template('admin_dashboard.html', cars=cars)
+    cars = Car.query.all()
+    return render_template('admin_dashboard.html', cars=[car.to_dict() for car in cars])
 
 @app.route('/admin/add_car', methods=['GET', 'POST'])
 def admin_add_car():
@@ -96,12 +119,21 @@ def admin_add_car():
             image_data = img_byte_arr.getvalue()
         
         # Add car to database
-        car_id = add_car(name, price, specifications, image_data)
-        if car_id:
+        new_car = Car(
+            name=name,
+            price=price,
+            specifications=specifications,
+            image=image_data
+        )
+        
+        try:
+            db.session.add(new_car)
+            db.session.commit()
             flash('Автомобиль успешно добавлен!', 'success')
             return redirect(url_for('admin_dashboard'))
-        else:
-            flash('Ошибка при добавлении автомобиля', 'error')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Ошибка при добавлении автомобиля: {str(e)}', 'error')
     
     return render_template('add_car.html')
 
@@ -111,21 +143,27 @@ def admin_delete_car(car_id):
     if not session.get('admin_logged_in'):
         return jsonify(success=False, error='Не авторизован')
     
-    success = delete_car(car_id)
-    if success:
-        flash('Автомобиль успешно удален!', 'success')
+    car = Car.query.get(car_id)
+    if car:
+        try:
+            db.session.delete(car)
+            db.session.commit()
+            flash('Автомобиль успешно удален!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Ошибка при удалении автомобиля: {str(e)}', 'error')
     else:
-        flash('Ошибка при удалении автомобиля', 'error')
+        flash('Автомобиль не найден', 'error')
     
     return redirect(url_for('admin_dashboard'))
 
 @app.route('/car_image/<int:car_id>')
 def car_image(car_id):
     """Serve car image"""
-    car = get_car(car_id)
-    if car and car['image']:
+    car = Car.query.get(car_id)
+    if car and car.image:
         return send_file(
-            BytesIO(car['image']),
+            BytesIO(car.image),
             mimetype='image/jpeg',
             as_attachment=False,
             download_name=f'car_{car_id}.jpg'
