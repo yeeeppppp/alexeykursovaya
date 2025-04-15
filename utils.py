@@ -1,23 +1,55 @@
+import tkinter as tk
+from tkinter import filedialog
+from PIL import Image, ImageTk
 import os
 from io import BytesIO
-from PIL import Image
 
-def get_image_dimensions(img_data):
+def center_window(window, width, height):
     """
-    Get the dimensions of an image from binary data
+    Center a tkinter window on the screen
     
     Args:
-        img_data (bytes): Binary image data
-        
-    Returns:
-        tuple: (width, height) of the image
+        window: Tkinter window object
+        width (int): Window width
+        height (int): Window height
     """
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    
+    x = (screen_width - width) // 2
+    y = (screen_height - height) // 2
+    
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+def load_image_file():
+    """
+    Open a file dialog to select an image file
+    
+    Returns:
+        tuple: (image_data, tk_image) or (None, None) if cancelled
+    """
+    file_types = [
+        ('Image files', '*.jpg;*.jpeg;*.png;*.gif'),
+        ('All files', '*.*')
+    ]
+    
+    file_path = filedialog.askopenfilename(filetypes=file_types)
+    if not file_path:
+        return None, None
+    
     try:
-        img = Image.open(BytesIO(img_data))
-        return img.size
+        with open(file_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Create TkInter compatible image
+        image = Image.open(BytesIO(image_data))
+        image = image.resize((150, 100), Image.LANCZOS)
+        tk_image = ImageTk.PhotoImage(image)
+        
+        return image_data, tk_image
     except Exception as e:
-        print(f"Error getting image dimensions: {e}")
-        return (0, 0)
+        print(f"Error loading image: {e}")
+        return None, None
 
 def truncate_text(text, max_length=25):
     """
@@ -33,16 +65,3 @@ def truncate_text(text, max_length=25):
     if len(text) <= max_length:
         return text
     return text[:max_length - 3] + "..."
-
-def format_price(price, currency="₽"):
-    """
-    Format a price with currency symbol
-    
-    Args:
-        price (float): The price to format
-        currency (str): Currency symbol
-        
-    Returns:
-        str: Formatted price with currency
-    """
-    return f"{price:,.2f} {currency}"
